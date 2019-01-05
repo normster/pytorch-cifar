@@ -20,6 +20,12 @@ from utils import progress_bar
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
+parser.add_argument('--schedule', type=int, nargs='+', default=[150, 250],
+                        help='Decrease learning rate at these epochs.')
+parser.add_argument('--gamma', type=float, default=0.1,
+                        help='How much to reduce learning rate at each scheduled epoch')
+parser.add_argument('--epochs', type=int, default=350,
+                        help='Total training epochs')
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -51,7 +57,7 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 # Model
 print('==> Building model..')
 # net = VGG('VGG19')
-# net = ResNet18()
+net = ResNet18()
 # net = PreActResNet18()
 # net = GoogLeNet()
 # net = DenseNet121()
@@ -61,7 +67,7 @@ print('==> Building model..')
 # net = DPN92()
 # net = ShuffleNetG2()
 # net = SENet18()
-net = ShuffleNetV2(1)
+# net = ShuffleNetV2(1)
 net = net.to(device)
 if device == 'cuda':
     net = torch.nn.DataParallel(net)
@@ -71,7 +77,7 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt.t7')
+    checkpoint = torch.load('./checkpoint/ckpt.pth')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
@@ -133,10 +139,20 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.t7')
+        torch.save(state, './checkpoint/ckpt.pth')
+        if type(net) == nn.DataParallel:
+            torch.save(net.module.state_dict(), "./checkpoint/model_best.pth")
+        else:
+            torch.save(net.state_dict(), "./checkpoint/model_best.pth")
         best_acc = acc
 
+def adjust_learning_rate(optim, epoch):
+    if epoch in args.schedule:
+        for param_group in optim.param_groups:
+            param_group['lr'] *= 0.1 
 
-for epoch in range(start_epoch, start_epoch+200):
+
+for epoch in range(start_epoch, args.epochs):
+    adjust_learning_rate(optimizer, epoch)
     train(epoch)
     test(epoch)
